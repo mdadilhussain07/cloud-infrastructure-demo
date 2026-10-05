@@ -22,3 +22,18 @@ output "private_security_group_id" {
   description = "Security Group ID for Private Database"
   value       = aws_security_group.private_sg.id
 }
+
+output "bastion_public_ip" {
+  description = "Public IP of Bastion Jump Host"
+  value       = aws_instance.bastion.public_ip
+}
+
+output "backend_private_ip" {
+  description = "Private IP of Backend DB (No internet access)"
+  value       = aws_instance.backend_db.private_ip
+}
+
+output "jump_ssh_example" {
+  description = "SSH Jump Proxy Command"
+  value       = "ssh -J ubuntu@${aws_instance.bastion.public_ip} ubuntu@${aws_instance.backend_db.private_ip}"
+}

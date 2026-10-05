@@ -135,15 +135,25 @@ resource "aws_security_group" "public_sg" {
 # Rule: Inbound PostgreSQL port 5432 is ONLY allowed if traffic comes from public_sg!
 resource "aws_security_group" "private_sg" {
   name        = "${var.environment}-private-sg"
-  description = "Allow DB traffic only from public web instances"
+  description = "Allow traffic strictly from public security group"
   vpc_id      = aws_vpc.main.id
 
+  # Database Access
   ingress {
     description     = "PostgreSQL from Public SG only"
     from_port       = 5432
     to_port         = 5432
     protocol        = "tcp"
-    security_groups = [aws_security_group.public_sg.id] # Source is the SG ID, not an IP!
+    security_groups = [aws_security_group.public_sg.id]
+  }
+
+  # Administrative SSH Access (Jump Host only)
+  ingress {
+    description     = "SSH strictly from Bastion in Public SG"
+    from_port       = 22
+    to_port         = 22
+    protocol        = "tcp"
+    security_groups = [aws_security_group.public_sg.id]
   }
 
   egress {
@@ -156,5 +166,54 @@ resource "aws_security_group" "private_sg" {
 
   tags = {
     Name = "${var.environment}-private-sg"
+  }
+}
+
+# 12. Register Local Public Key with AWS EC2
+resource "aws_key_pair" "deployer" {
+  key_name   = "${var.environment}-deployer-key"
+  public_key = file("~/.ssh/id_showcase.pub") # Adjust path if using id_rsa.pub or id_ed25519.pub
+}
+# --- COMPUTE LAYER ---
+
+# 12. Bastion / Jump Host (Public Subnet)
+resource "aws_instance" "bastion" {
+  ami                         = data.aws_ami.ubuntu.id
+  instance_type               = var.instance_type
+  subnet_id                   = aws_subnet.public.id
+  vpc_security_group_ids      = [aws_security_group.public_sg.id]
+  associate_public_ip_address = true
+  key_name                    = aws_key_pair.deployer.key_name
+
+  root_block_device {
+    volume_size           = 10
+    volume_type           = "gp3"
+    delete_on_termination = true
+  }
+
+  tags = {
+    Name = "${var.environment}-bastion"
+    Role = "JumpHost"
+  }
+}
+
+# 13. Backend / Database Server (Private Subnet - Fully Isolated)
+resource "aws_instance" "backend_db" {
+  ami                         = data.aws_ami.ubuntu.id
+  instance_type               = var.instance_type
+  subnet_id                   = aws_subnet.private.id
+  vpc_security_group_ids      = [aws_security_group.private_sg.id]
+  associate_public_ip_address = false # Strict isolation: No public IPv4 address
+  key_name                    = aws_key_pair.deployer.key_name
+
+  root_block_device {
+    volume_size           = 10
+    volume_type           = "gp3"
+    delete_on_termination = true
+  }
+
+  tags = {
+    Name = "${var.environment}-backend-db"
+    Role = "Database"
   }
 }
