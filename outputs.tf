@@ -4,36 +4,26 @@ output "vpc_id" {
 }
 
 output "public_subnet_id" {
-  description = "ID of the Public Ingress Subnet"
+  description = "ID of the Public Subnet"
   value       = aws_subnet.public.id
 }
 
 output "private_subnet_id" {
-  description = "ID of the Private Database Subnet"
+  description = "ID of the Private Subnet"
   value       = aws_subnet.private.id
 }
 
-output "public_security_group_id" {
-  description = "Security Group ID for Web Ingress"
-  value       = aws_security_group.public_sg.id
+output "zero_trust_instance_id" {
+  description = "EC2 Instance ID managed by SSM"
+  value       = aws_instance.zero_trust_node.id
 }
 
-output "private_security_group_id" {
-  description = "Security Group ID for Private Database"
+output "zero_trust_security_group_id" {
+  description = "Security Group ID (Confirming 0 ingress rules)"
   value       = aws_security_group.private_sg.id
 }
 
-output "bastion_public_ip" {
-  description = "Public IP of Bastion Jump Host"
-  value       = aws_instance.bastion.public_ip
-}
-
-output "backend_private_ip" {
-  description = "Private IP of Backend DB (No internet access)"
-  value       = aws_instance.backend_db.private_ip
-}
-
-output "jump_ssh_example" {
-  description = "SSH Jump Proxy Command"
-  value       = "ssh -J ubuntu@${aws_instance.bastion.public_ip} ubuntu@${aws_instance.backend_db.private_ip}"
+output "ssm_start_session_command" {
+  description = "Command to connect securely via AWS Systems Manager without Port 22"
+  value       = "aws ssm start-session --target ${aws_instance.zero_trust_node.id} --region ${var.aws_region}"
 }
