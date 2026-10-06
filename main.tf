@@ -80,10 +80,41 @@ resource "aws_route_table_association" "public" {
   route_table_id = aws_route_table.public.id
 }
 
-# 8. Route Table for Private Subnet
-# Notice: No route to Internet Gateway. Traffic remains strictly internal to the VPC.
+# -------------------------------------------------------------
+# NAT GATEWAY COMPONENTS (Insert here)
+# -------------------------------------------------------------
+
+# 8a. Static Elastic IP for the NAT Gateway
+resource "aws_eip" "nat" {
+  domain     = "vpc"
+  depends_on = [aws_internet_gateway.gw]
+
+  tags = {
+    Name = "${var.environment}-nat-eip"
+  }
+}
+
+# 8b. The NAT Gateway (Must live in the PUBLIC subnet to reach the IGW)
+resource "aws_nat_gateway" "nat" {
+  allocation_id = aws_eip.nat.id
+  subnet_id     = aws_subnet.public.id
+
+  tags = {
+    Name = "${var.environment}-nat-gw"
+  }
+
+  depends_on = [aws_internet_gateway.gw]
+}
+
+# 8c. Route Table for Private Subnet (Updated with the NAT route)
 resource "aws_route_table" "private" {
   vpc_id = aws_vpc.main.id
+
+  # THIS ROUTE FORWARDS ALL OUTBOUND INTERNET TRAFFIC TO THE NAT GATEWAY
+  route {
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.nat.id
+  }
 
   tags = {
     Name = "${var.environment}-private-rt"
