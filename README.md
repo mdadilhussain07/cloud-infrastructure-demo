@@ -144,30 +144,30 @@ $(terraform output -raw ssm_start_session_command)
 3. Instance Metadata Service v2 (IMDSv2) Audit
 Inside the active shell session, verify token-based IAM role authentication:
 
-# Step A: Request a secure 6-hour IMDSv2 token
+## Step A: Request a secure 6-hour IMDSv2 token
 TOKEN=$(curl -s -X PUT "[http://169.254.169.254/latest/api/token](http://169.254.169.254/latest/api/token)" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
 
-# Step B: Interrogate assigned IAM Instance Profile
+## Step B: Interrogate assigned IAM Instance Profile
 curl -s -H "X-aws-ec2-metadata-token: $TOKEN" [http://169.254.169.254/latest/meta-data/iam/security-credentials/](http://169.254.169.254/latest/meta-data/iam/security-credentials/)
 
-# Step C: Inspect temporary STS session credentials
+## Step C: Inspect temporary STS session credentials
 curl -s -H "X-aws-ec2-metadata-token: $TOKEN" [http://169.254.169.254/latest/meta-data/iam/security-credentials/production-ssm-ec2-role](http://169.254.169.254/latest/meta-data/iam/security-credentials/production-ssm-ec2-role)
 
 
-### Production Edge Cases Diagnosed & Resolved
+## Production Edge Cases Diagnosed & Resolved
 During development and load testing, three enterprise cloud engineering challenges were diagnosed and resolved:
 
-1. Security Group Dependency Deadlock
+### 1. Security Group Dependency Deadlock
 Root Cause: Attempting an in-place modification of security groups triggered an AWS API DependencyViolation. AWS forbids deleting a security group while active Elastic Network Interfaces (ENIs) are attached.
 
 Remediation: Configured lifecycle { create_before_destroy = true } paired with name_prefix in Terraform. This ensures new security groups are provisioned and swapped before legacy groups are terminated.
 
-2. AWS Elastic IP Disassociation Race Condition
+### 2. AWS Elastic IP Disassociation Race Condition
 Root Cause: Simultaneous deletion of a NAT Gateway and its associated Elastic IP (EIP) triggered InvalidNetworkInterfaceID.NotFound. AWS background detach operations ran asynchronously with Terraform's release API call.
 
 Remediation: Structured explicit resource dependency chains (depends_on = [aws_internet_gateway.gw]) and introduced managed state convergence patterns.
 
-3. Multi-Workstation SSH Key Registration Pitfall
+### 3. Multi-Workstation SSH Key Registration Pitfall
 Root Cause: aws_key_pair was updated in code across different machines, but running EC2 instances failed authentication. Key pairs injected via cloud-init only write to ~/.ssh/authorized_keys during the initial boot cycle.
 
 Remediation: Executed targeted resource recreation via terraform apply -replace to enforce clean bootstrapping, before permanently deprecating SSH in favor of SSM Session Manager.
@@ -181,32 +181,32 @@ Terraform v1.8+ installed
 
 ## Deployment Steps
  
-# 1. Initialize remote backend and pull provider plugins
+### 1. Initialize remote backend and pull provider plugins
 terraform init
 
-# 2. Validate code syntax and format
+### 2. Validate code syntax and format
 terraform fmt -check
 terraform validate
 
-# 3. Generate execution plan
+### 3. Generate execution plan
 terraform plan -out=tfplan
 
-# 4. Provision infrastructure
+### 4. Provision infrastructure
 terraform apply tfplan
 
-# 5. Access instance via Zero-Trust Session Manager
+### 5. Access instance via Zero-Trust Session Manager
 $(terraform output -raw ssm_start_session_command)
 
-# 6. Teardown infrastructure (Prevent idle cloud costs)
+### 6. Teardown infrastructure (Prevent idle cloud costs)
 terraform destroy -auto-approve
 
 ## Git Multi-Workstation Synchronization Protocol
-# When finishing on Workstation A:
+### When finishing on Workstation A:
 git add .
 git commit -m "feat(ssm): verify zero-trust session manager implementation"
 git push origin main
 
-# When picking up on Workstation B:
+### When picking up on Workstation B:
 git pull origin main
 terraform init   # Refreshes remote state lock against DynamoDB
 ---
