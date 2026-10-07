@@ -23,65 +23,47 @@ This showcase tracks the architectural evolution from traditional **Bastion Jump
 8. [Multi-Workstation Deployment Runbook](#multi-workstation-deployment-runbook)
 
 ---
+## Architecture Overview
 
-## Architecture & Topology
+```mermaid
+flowchart TD
+    subgraph Client["DevOps Workstation"]
+        Dev["Engineer Terminal\n(Ubuntu / Office WSL2)"]
+    end
 
-[ DevOps Engineer Terminal ]
-                     (Home Ubuntu / Office WSL2)
-                                  │
-                                  ▼ (HTTPS / TLS 443 via IAM & STS)
-                  ┌───────────────────────────────┐
-                  │    AWS Systems Manager API    │
-                  │    (ssm.ap-south-1.aws)       │
-                  └───────────────┬───────────────┘
-                                  │
-┌─── Production Custom VPC (10.0.0.0/16) ──────────────────────────────────────┐
-│                                    │ (Outbound Encrypted Control Channel)    │
-│                                    ▼                                         │
-│  ┌─── Public Subnet (10.0.1.0/24) ────────────────────────────────────────┐  │
-│  │   • Internet Gateway (IGW) for Outbound Egress                         │  │
-│  │   • Zero-Trust Compute Node (Ubuntu 24.04 LTS / t3.micro)              │  │
-│  │   • Security Group: 0 Inbound Rules (IpPermissions: [])                │  │
-│  │   • IAM Instance Profile: AmazonSSMManagedInstanceCore (IMDSv2)        │  │
-│  └────────────────────────────────────────────────────────────────────────┘  │
-│                    (Home Ubuntu / Office WSL2)                               │
-└──────────────────────────────────────────────────────────────────────────────┘
-                                  │
-                                  ▼ (HTTPS / TLS 443 via IAM & STS)
-                  ┌───────────────────────────────┐
-                  │    AWS Systems Manager API    │
-                  │    (ssm.ap-south-1.aws)       │
-                  └───────────────┬───────────────┘
-                                  │
-┌─── Production Custom VPC (10.0.0.0/16) ──────────────────────────────────────┐
-│                                    │ (Outbound Encrypted Control Channel)    │
-│                                    ▼                                         │
-│  ┌─── Public Subnet (10.0.1.0/24) ────────────────────────────────────────┐  │
-│  │   • Internet Gateway (IGW) for Outbound Egress                         │  │
-│  │   • Zero-Trust Compute Node (Ubuntu 24.04 LTS / t3.micro)              │  │
-│  │   • Security Group: 0 Inbound Rules (IpPermissions: [])                │  │
-│  │   • IAM Instance Profile: AmazonSSMManagedInstanceCore (IMDSv2)        │  │
-│  │   • Outbound Agent: snap.amazon-ssm-agent (Active/Running)             │  │
-│  └────────────────────────────────────────────────────────────────────────┘  │
-│                                                                              │
-│  ┌─── Isolated Private Subnet (10.0.2.0/24) ──────────────────────────────┐  │
-│  │   • Subnet CIDR: 10.0.2.0/24 (RFC 1918 Private Address Space)          │  │
-│  │   • Route Table: Local VPC Virtual Router (10.0.2.1) ONLY              │  │
-│  │   • Ingress from Internet: Physically Impossible                       │  │
-│  │   • Optional Outbound: Source NAT Gateway (SNAT) via Public Subnet     │  │
-│  └────────────────────────────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────────────────────────────┘
-│  │   • Outbound Agent: snap.amazon-ssm-agent (Active/Running)             │  │
-│  └────────────────────────────────────────────────────────────────────────┘  │
-│                                                                              │
-│  ┌─── Isolated Private Subnet (10.0.2.0/24) ──────────────────────────────┐  │
-│  │   • Subnet CIDR: 10.0.2.0/24 (RFC 1918 Private Address Space)          │  │
-│  │   • Route Table: Local VPC Virtual Router (10.0.2.1) ONLY              │  │
-│  │   • Ingress from Internet: Physically Impossible                       │  │
-│  │   • Optional Outbound: Source NAT Gateway (SNAT) via Public Subnet     │  │
-│  └────────────────────────────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────────────────────────────┘
+    subgraph AWS_Control["AWS Cloud Control Plane"]
+        SSM["AWS Systems Manager API\n(ssm.ap-south-1.amazonaws.com)"]
+        IAM["IAM & STS\n(Temporary Token Rotation / IMDSv2)"]
+    end
 
+    subgraph VPC["Custom VPC: 10.0.0.0/16"]
+        subgraph PublicSubnet["Public Subnet: 10.0.1.0/24"]
+            IGW["Internet Gateway (0.0.0.0/0)"]
+            Node["Zero-Trust Compute Node\n(Ubuntu 24.04 LTS)\n• Security Group: 0 Inbound Rules\n• snap.amazon-ssm-agent running"]
+        end
+
+        subgraph PrivateSubnet["Private Subnet: 10.0.2.0/24"]
+            Router["VPC Router (10.0.2.1)\n• Ingress: None\n• Outbound: RFC 1918 Local Only"]
+            DB["Isolated Database / Backend Tier"]
+        end
+    end
+
+    Dev -->|HTTPS 443 via IAM / MFA| SSM
+    Node -->|Outbound TLS Polling: 443| SSM
+    Node -.->|Assigned Profile| IAM
+    IGW --> Node
+    Router --- DB
+
+    classDef aws fill:#FF9900,stroke:#232F3E,stroke-width:2px,color:white;
+    classDef vpc fill:#0D1117,stroke:#30363D,stroke-width:2px,color:#E6EDF3;
+    classDef node fill:#1F6FEB,stroke:#58A6FF,stroke-width:1px,color:white;
+    classDef priv fill:#161B22,stroke:#F85149,stroke-width:1px,color:#E6EDF3;
+
+    class SSM,IAM aws;
+    class VPC,PublicSubnet vpc;
+    class Node node;
+    class PrivateSubnet,DB priv;
+```
 ---
 
 ## Key Engineering Innovations
@@ -129,11 +111,21 @@ To facilitate multi-developer workflows without risk of state corruption, local 
 
 ```text
 .
-├── provider.tf      # AWS Provider definitions & S3/DynamoDB remote state backend
-├── variables.tf     # Environment variables, CIDR definitions, and region settings
-├── main.tf          # Core infrastructure: VPC, Subnets, IAM Profiles, Security Groups, EC2
-├── outputs.tf       # Structured infrastructure outputs and dynamic SSM connection commands
-└── README.md        # Comprehensive architecture documentation and runbook
+├── modules/
+│   ├── networking/
+│   │   ├── main.tf          # VPC, Subnets, IGW, Route Tables
+│   │   ├── variables.tf     # Network CIDR inputs & regional config
+│   │   └── outputs.tf       # Exported VPC & Subnet IDs
+│   └── compute/
+│       ├── main.tf          # IAM Roles, Zero-Trust SG, EC2 SSM node
+│       ├── variables.tf     # AMI, subnet, and VPC references
+│       └── outputs.tf       # Exported Instance ID & Security Group ID
+├── provider.tf              # AWS Provider & S3/DynamoDB remote backend
+├── variables.tf             # Root environment variables
+├── main.tf                  # Root composition (calls networking & compute modules)
+├── outputs.tf               # Structured outputs & SSM session command
+└── README.md                # Architectural documentation & runbook
+```
 
 ## Operational Verification & Security Audits
 
