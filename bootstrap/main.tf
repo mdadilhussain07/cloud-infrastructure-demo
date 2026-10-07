@@ -65,7 +65,7 @@ resource "aws_s3_bucket_public_access_block" "state_security" {
 resource "aws_dynamodb_table" "terraform_locks" {
   name         = "adyl-terraform-locks"
   billing_mode = "PAY_PER_REQUEST" # Free-tier compliant; zero charge when idle
-  hash_key     = "LockID"         # Terraform requires this exact primary key
+  hash_key     = "LockID"          # Terraform requires this exact primary key
 
   attribute {
     name = "LockID"
