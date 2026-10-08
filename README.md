@@ -111,21 +111,29 @@ To facilitate multi-developer workflows without risk of state corruption, local 
 
 ```text
 .
+├── environments/
+│   ├── dev/                 # Dev environment composition
+│   │   ├── main.tf          # Instantiates modules with dev variables (10.10.0.0/16)
+│   │   ├── variables.tf     # Dev parameter definitions
+│   │   ├── outputs.tf       # Dev outputs & SSM command
+│   │   └── provider.tf      # Isolated remote state: showcase/dev/terraform.tfstate
+│   └── prod/                # Prod environment composition
+│       ├── main.tf          # Instantiates modules with prod variables (10.0.0.0/16)
+│       ├── variables.tf     # Prod parameter definitions
+│       ├── outputs.tf       # Prod outputs & SSM command
+│       └── provider.tf      # Isolated remote state: showcase/prod/terraform.tfstate
 ├── modules/
-│   ├── networking/
-│   │   ├── main.tf          # VPC, Subnets, IGW, Route Tables
-│   │   ├── variables.tf     # Network CIDR inputs & regional config
-│   │   └── outputs.tf       # Exported VPC & Subnet IDs
-│   └── compute/
-│       ├── main.tf          # IAM Roles, Zero-Trust SG, EC2 SSM node
-│       ├── variables.tf     # AMI, subnet, and VPC references
-│       └── outputs.tf       # Exported Instance ID & Security Group ID
-├── provider.tf              # AWS Provider & S3/DynamoDB remote backend
-├── variables.tf             # Root environment variables
-├── main.tf                  # Root composition (calls networking & compute modules)
-├── outputs.tf               # Structured outputs & SSM session command
-└── README.md                # Architectural documentation & runbook
+│   ├── networking/          # Reusable VPC, Subnets, IGW, Route Tables
+│   │   ├── main.tf
+│   │   ├── variables.tf
+│   │   └── outputs.tf
+│   └── compute/             # Reusable Zero-Trust EC2, IAM, Security Groups
+│       ├── main.tf
+│       ├── variables.tf
+│       └── outputs.tf
+└── README.md                # Comprehensive documentation & architectural runbook
 ```
+
 
 ## Operational Verification & Security Audits
 
@@ -172,46 +180,52 @@ Root Cause: aws_key_pair was updated in code across different machines, but runn
 
 Remediation: Executed targeted resource recreation via terraform apply -replace to enforce clean bootstrapping, before permanently deprecating SSH in favor of SSM Session Manager.
 
-## Multi-Workstation Deployment Runbook
+### Deployment Instructions
+
+Navigate to the target environment directory:
+
+```bash
+# For Development Environment
+cd environments/dev
+
+# For Production Environment
+cd environments/prod
+
+# Initialize remote backend and download provider plugins
+terraform init
+
+# Validate configuration syntax
+terraform validate
+
+# Review the execution plan
+terraform plan
+
+# Provision infrastructure
+terraform apply -auto-approve
+
+# Connect via Zero-Trust SSM Session Manager
+$(terraform output -raw ssm_connect_command)
+
+# Teardown infrastructure (Prevent idle costs)
+terraform destroy -auto-approve
+
 
 Prerequisites
 AWS CLI v2 configured with administrative IAM credentials
-AWS Session Manager Plugin installed locally
-Terraform v1.8+ installed
+AWS Session Manager Plugin installed loca
+```
 
-## Deployment Steps
- 
-### 1. Initialize remote backend and pull provider plugins
-terraform init
+### Git Multi-Workstation Synchronization Protocol
 
-### 2. Validate code syntax and format
-terraform fmt -check
-terraform validate
-
-### 3. Generate execution plan
-terraform plan -out=tfplan
-
-### 4. Provision infrastructure
-terraform apply tfplan
-
-### 5. Access instance via Zero-Trust Session Manager
-$(terraform output -raw ssm_start_session_command)
-
-### 6. Teardown infrastructure (Prevent idle cloud costs)
-terraform destroy -auto-approve
-
-## Git Multi-Workstation Synchronization Protocol
-### When finishing on Workstation A:
+```bash
+# When finishing on Workstation A:
 git add .
 git commit -m "feat(ssm): verify zero-trust session manager implementation"
 git push origin main
 
-### When picking up on Workstation B:
+# When picking up on Workstation B:
 git pull origin main
 terraform init   # Refreshes remote state lock against DynamoDB
 ---
-
-### How to apply this right now on your home machine:
-
 ```
 
